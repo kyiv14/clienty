@@ -2,89 +2,59 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Клиенты</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Клиенты Firebase</title>
   <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-white text-gray-800 font-sans relative">
+  <!-- Firebase SDK -->
+  <script type="module">
+    // Импортируем Firebase из CDN
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-app.js";
+    import {
+      getFirestore,
+      collection,
+      addDoc,
+      getDocs,
+      doc,
+      updateDoc,
+      deleteDoc
+    } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js";
 
-  <!-- Кнопка добавления клиента -->
-  <div class="fixed top-4 left-1/2 transform -translate-x-1/2 z-40">
-    <button onclick="openModal()" class="bg-black text-white px-6 py-3 rounded-2xl text-lg font-medium hover:opacity-80 transition">
-      Добавить клиента
-    </button>
-  </div>
+    // Конфиг Firebase — вставь сюда свой
+    const firebaseConfig = {
+      apiKey: "AIzaSyBfAK1wODl4MTXd2wit5BccSmWd3jvYXI4",
+      authDomain: "clienty-1975.firebaseapp.com",
+      projectId: "clienty-1975",
+      storageBucket: "clienty-1975.firebasestorage.app",
+      messagingSenderId: "774716625150",
+      appId: "1:774716625150:web:0f3d677c047246b42755af",
+      measurementId: "G-Y4JVNFJEZD"
+    };
 
-  <!-- Контейнер клиентов -->
-  <div id="clientsContainer" class="pt-24 px-4 flex flex-col gap-4 max-w-md mx-auto"></div>
+    // Инициализация Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
 
-  <!-- Модалка формы -->
-  <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
-    <div class="bg-white rounded-3xl shadow-xl w-full max-w-sm p-6">
-      <div class="flex justify-between items-center mb-4">
-        <h2 class="text-xl font-semibold" id="modalTitle">Новый клиент</h2>
-        <button onclick="closeModal()" class="text-gray-500 hover:text-gray-700 text-2xl leading-none">&times;</button>
-      </div>
-      <form id="clientForm" class="space-y-4">
-        <input type="hidden" id="clientIndex">
-        <div><label class="block text-sm font-medium mb-1">Телефон</label>
-          <input type="tel" id="phone" class="w-full border rounded-xl px-4 py-2" required placeholder="+380..." />
-        </div>
-        <div><label class="block text-sm font-medium mb-1">E-mail</label>
-          <input type="email" id="email" class="w-full border rounded-xl px-4 py-2" required />
-        </div>
-        <div><label class="block text-sm font-medium mb-1">Ключ доступа</label>
-          <input type="text" id="key" class="w-full border rounded-xl px-4 py-2" required />
-        </div>
-        <div><label class="block text-sm font-medium mb-1">Viber</label>
-          <input type="text" id="viber" class="w-full border rounded-xl px-4 py-2" required />
-        </div>
-        <div><label class="block text-sm font-medium mb-1">Дата оплаты</label>
-          <input type="date" id="paydate" class="w-full border rounded-xl px-4 py-2" required />
-        </div>
-        <button type="submit" class="w-full bg-black text-white py-2 rounded-xl hover:opacity-80 transition mt-2">
-          Сохранить
-        </button>
-      </form>
-    </div>
-  </div>
+    // DOM элементы
+    const clientsContainer = document.getElementById("clientsContainer");
+    const modal = document.getElementById("modal");
+    const infoModal = document.getElementById("infoModal");
+    const form = document.getElementById("clientForm");
+    const clientIndexInput = document.getElementById("clientIndex");
+    const modalTitle = document.getElementById("modalTitle");
+    const clientInfoDiv = document.getElementById("clientInfo");
+    const editBtn = document.getElementById("editBtn");
+    const deleteBtn = document.getElementById("deleteBtn");
 
-  <!-- Модалка информации -->
-  <div id="infoModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
-    <div class="bg-white rounded-3xl shadow-xl w-full max-w-sm p-6">
-      <div class="flex justify-between items-center mb-4">
-        <h2 class="text-xl font-semibold">Информация о клиенте</h2>
-        <button onclick="closeInfoModal()" class="text-gray-500 hover:text-gray-700 text-2xl leading-none">&times;</button>
-      </div>
-      <div id="clientInfo" class="space-y-4 text-gray-700 text-xl"></div>
-      <button id="editBtn" class="mt-2 w-full bg-black text-white py-2 rounded-xl hover:opacity-80 transition">Редактировать</button>
-      <button id="deleteBtn" class="mt-2 w-full bg-red-600 text-white py-2 rounded-xl hover:bg-red-700 transition">Удалить клиента</button>
-    </div>
-  </div>
+    let clients = []; // локальный массив клиентов
+    let currentClientId = null; // id текущего клиента (Firestore doc id)
 
-  <script>
-    let clients = JSON.parse(localStorage.getItem('clients')) || [];
-    let currentClientIndex = null;
-
-    function saveClients() {
-      localStorage.setItem('clients', JSON.stringify(clients));
-    }
-
-    function normalizePhone(phone) {
-      let digits = phone.replace(/\D/g, '');
-      if (!digits.startsWith('380')) {
-        if (digits.startsWith('0')) digits = '38' + digits;
-        else digits = '380' + digits;
-      }
-      return digits;
-    }
-
+    // Утилиты
     function pluralDays(n) {
       const mod10 = n % 10;
       const mod100 = n % 100;
-      if (mod10 === 1 && mod100 !== 11) return 'день';
-      if ([2, 3, 4].includes(mod10) && ![12, 13, 14].includes(mod100)) return 'дня';
-      return 'дней';
+      if (mod10 === 1 && mod100 !== 11) return "день";
+      if ([2, 3, 4].includes(mod10) && ![12, 13, 14].includes(mod100)) return "дня";
+      return "дней";
     }
 
     function calculateDaysLeft(paydateStr) {
@@ -97,54 +67,67 @@
       return Math.max(0, diffDays);
     }
 
-    function renderClients() {
-      const container = document.getElementById('clientsContainer');
-      container.innerHTML = '';
-      clients.forEach((client, index) => {
-        const daysLeft = calculateDaysLeft(client.paydate);
-        const btn = document.createElement('button');
-        btn.className = `w-full ${daysLeft === 2 ? 'bg-red-500 text-white' : 'bg-gray-100 text-red-600'} font-bold py-3 px-4 rounded-xl shadow hover:opacity-90 text-left text-2xl`;
-        btn.textContent = client.phone;
-        btn.onclick = () => {
-          currentClientIndex = index;
-          showClientInfo(client);
-        };
-        container.appendChild(btn);
-      });
+    function normalizePhone(phone) {
+      let digits = phone.replace(/\D/g, "");
+      if (!digits.startsWith("380")) {
+        if (digits.startsWith("0")) digits = "38" + digits;
+        else digits = "380" + digits;
+      }
+      return digits;
     }
 
-    function openModal(index = null) {
-      document.getElementById('modal').classList.replace('hidden', 'flex');
-      const form = document.getElementById('clientForm');
-      if (index !== null) {
-        const c = clients[index];
-        form.phone.value = c.phone;
-        form.email.value = c.email;
-        form.key.value = c.key;
-        form.viber.value = c.viber;
-        form.paydate.value = c.paydate;
-        document.getElementById('clientIndex').value = index;
-        document.getElementById('modalTitle').textContent = "Редактировать клиента";
+    // Открыть модалку формы
+    function openModal(client = null) {
+      modal.classList.remove("hidden");
+      if (client) {
+        modalTitle.textContent = "Редактировать клиента";
+        form.phone.value = client.phone;
+        form.email.value = client.email;
+        form.key.value = client.key;
+        form.viber.value = client.viber;
+        form.paydate.value = client.paydate;
+        clientIndexInput.value = client.id;
       } else {
+        modalTitle.textContent = "Новый клиент";
         form.reset();
-        document.getElementById('clientIndex').value = '';
-        document.getElementById('modalTitle').textContent = "Новый клиент";
+        clientIndexInput.value = "";
       }
     }
 
     function closeModal() {
-      document.getElementById('modal').classList.replace('flex', 'hidden');
+      modal.classList.add("hidden");
+    }
+
+    function openInfoModal() {
+      infoModal.classList.remove("hidden");
     }
 
     function closeInfoModal() {
-      document.getElementById('infoModal').classList.replace('flex', 'hidden');
+      infoModal.classList.add("hidden");
     }
 
+    // Отрисовка списка клиентов
+    async function renderClients() {
+      clientsContainer.innerHTML = "";
+      clients.forEach((client) => {
+        const daysLeft = calculateDaysLeft(client.paydate);
+        const btn = document.createElement("button");
+        btn.className = `w-full ${
+          daysLeft === 2 ? "bg-red-500 text-white" : "bg-gray-100 text-red-600"
+        } font-bold py-3 px-4 rounded-xl shadow hover:opacity-90 text-left text-2xl mb-3`;
+        btn.textContent = client.phone;
+        btn.onclick = () => {
+          showClientInfo(client);
+        };
+        clientsContainer.appendChild(btn);
+      });
+    }
+
+    // Показать инфо клиента в модалке
     function showClientInfo(client) {
       const pd = normalizePhone(client.phone);
       const daysLeft = calculateDaysLeft(client.paydate);
-      const info = document.getElementById('clientInfo');
-      info.innerHTML = `
+      clientInfoDiv.innerHTML = `
         <div class="flex items-center gap-3">📞 <a href="tel:${pd}" class="text-black no-underline">${client.phone}</a></div>
         <div class="flex items-center gap-3">📧 <a href="mailto:${client.email}" class="text-black no-underline">${client.email}</a></div>
         <div class="flex items-center gap-3">🛡️ <span class="text-black">${client.key}</span></div>
@@ -153,45 +136,134 @@
         <div class="flex items-center gap-3">🗓️ <span class="text-black">${new Date(client.paydate).toLocaleDateString()}</span></div>
         <div class="flex items-center gap-3">⏳ <span class="text-red-600 font-bold text-xl">Тариф заканчивается через: ${daysLeft} ${pluralDays(daysLeft)}</span></div>
       `;
-      document.getElementById('infoModal').classList.replace('hidden', 'flex');
+      currentClientId = client.id;
+      openInfoModal();
     }
 
-    document.getElementById('clientForm').addEventListener('submit', (e) => {
-      e.preventDefault();
-      const phone = normalizePhone(e.target.phone.value.trim());
-      const email = e.target.email.value.trim();
-      const key = e.target.key.value.trim();
-      const viber = e.target.viber.value.trim();
-      const paydate = e.target.paydate.value;
-      const index = e.target.clientIndex.value;
-
-      const clientData = { phone, email, key, viber, paydate };
-      if (index === '') {
-        clients.push(clientData);
-      } else {
-        clients[index] = clientData;
-      }
-      saveClients();
-      closeModal();
+    // Загрузка клиентов из Firestore
+    async function loadClients() {
+      const snapshot = await getDocs(collection(db, "clients"));
+      clients = snapshot.docs.map((doc) => {
+        return { id: doc.id, ...doc.data() };
+      });
       renderClients();
+    }
+
+    // Добавление или редактирование клиента
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const clientId = clientIndexInput.value;
+      const data = {
+        phone: form.phone.value.trim(),
+        email: form.email.value.trim(),
+        key: form.key.value.trim(),
+        viber: form.viber.value.trim(),
+        paydate: form.paydate.value,
+      };
+
+      if (clientId) {
+        // обновить
+        const docRef = doc(db, "clients", clientId);
+        await updateDoc(docRef, data);
+      } else {
+        // добавить
+        await addDoc(collection(db, "clients"), data);
+      }
+
+      await loadClients();
+      closeModal();
     });
 
-    document.getElementById('editBtn').onclick = () => {
-      closeInfoModal();
-      openModal(currentClientIndex);
-    };
-
-    document.getElementById('deleteBtn').onclick = () => {
-      if (confirm("Удалить этого клиента?")) {
-        clients.splice(currentClientIndex, 1);
-        saveClients();
+    // Кнопка редактирования из инфомодалки
+    editBtn.onclick = () => {
+      const client = clients.find((c) => c.id === currentClientId);
+      if (client) {
         closeInfoModal();
-        renderClients();
+        openModal(client);
       }
     };
 
-    // При запуске страницы
-    renderClients();
+    // Кнопка удаления клиента
+    deleteBtn.onclick = async () => {
+      if (!currentClientId) return;
+      if (confirm("Удалить этого клиента?")) {
+        await deleteDoc(doc(db, "clients", currentClientId));
+        currentClientId = null;
+        await loadClients();
+        closeInfoModal();
+      }
+    };
+
+    // Кнопки закрытия модалок
+    document.getElementById("closeModalBtn").onclick = closeModal;
+    document.getElementById("closeInfoModalBtn").onclick = closeInfoModal;
+
+    // При загрузке страницы
+    window.onload = () => {
+      loadClients();
+    };
   </script>
+</head>
+<body class="bg-white font-sans text-gray-800">
+
+  <!-- Кнопка "Добавить клиента" -->
+  <div class="fixed top-4 left-1/2 transform -translate-x-1/2 z-40">
+    <button onclick="openModal()" class="bg-black text-white px-6 py-3 rounded-2xl text-lg font-medium hover:opacity-80 transition">
+      Добавить клиента
+    </button>
+  </div>
+
+  <!-- Контейнер списка клиентов -->
+  <div id="clientsContainer" class="pt-24 px-4 flex flex-col max-w-md mx-auto"></div>
+
+  <!-- Модалка формы -->
+  <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-3xl shadow-xl w-full max-w-sm p-6 relative">
+      <button id="closeModalBtn" class="absolute top-3 right-5 text-gray-500 hover:text-gray-700 text-3xl leading-none">&times;</button>
+      <h2 id="modalTitle" class="text-xl font-semibold mb-4">Новый клиент</h2>
+      <form id="clientForm" class="space-y-4">
+        <input type="hidden" id="clientIndex" />
+        <div>
+          <label class="block text-sm font-medium mb-1">Телефон</label>
+          <input type="tel" id="phone" class="w-full border rounded-xl px-4 py-2" required placeholder="+380..." />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">E-mail</label>
+          <input type="email" id="email" class="w-full border rounded-xl px-4 py-2" required />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Ключ доступа</label>
+          <input type="text" id="key" class="w-full border rounded-xl px-4 py-2" required />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Viber</label>
+          <input type="text" id="viber" class="w-full border rounded-xl px-4 py-2" required />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Дата оплаты</label>
+          <input type="date" id="paydate" class="w-full border rounded-xl px-4 py-2" required />
+        </div>
+        <button type="submit" class="w-full bg-black text-white py-2 rounded-xl hover:opacity-80 transition mt-2">
+          Сохранить
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Модалка информации о клиенте -->
+  <div id="infoModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-3xl shadow-xl w-full max-w-sm p-6 relative">
+      <button id="closeInfoModalBtn" class="absolute top-3 right-5 text-gray-500 hover:text-gray-700 text-3xl leading-none">&times;</button>
+      <h2 class="text-xl font-semibold mb-4">Информация о клиенте</h2>
+      <div id="clientInfo" class="space-y-4 text-gray-700 text-xl mb-4"></div>
+      <button id="editBtn" class="w-full bg-black text-white py-2 rounded-xl hover:opacity-80 transition mb-2">
+        Редактировать
+      </button>
+      <button id="deleteBtn" class="w-full bg-red-600 text-white py-2 rounded-xl hover:bg-red-700 transition">
+        Удалить клиента
+      </button>
+    </div>
+  </div>
+
 </body>
 </html>
