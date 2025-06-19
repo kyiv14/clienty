@@ -5,7 +5,50 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Клиенты IPTV</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Firebase SDK -->
+</head>
+<body class="bg-white font-sans text-gray-800">
+
+  <div class="fixed top-4 left-1/2 transform -translate-x-1/2 z-40">
+    <button id="addClientBtn" class="bg-black text-white px-6 py-3 rounded-2xl text-lg font-medium hover:opacity-80 transition">
+      Добавить клиента
+    </button>
+  </div>
+
+  <div id="clientsContainer" class="pt-24 px-4 max-w-md mx-auto"></div>
+
+  <!-- Модальное окно -->
+  <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+    <div class="bg-white rounded-3xl shadow-xl w-full max-w-sm p-6 relative">
+      <button id="closeModalBtn" class="absolute top-3 right-5 text-gray-500 hover:text-gray-700 text-3xl leading-none">&times;</button>
+      <h2 class="text-xl font-semibold mb-4">Добавить / Редактировать клиента</h2>
+      <form id="clientForm" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium mb-1" for="phone">Телефон</label>
+          <input type="tel" name="phone" id="phone" class="w-full border rounded-xl px-4 py-2" required placeholder="+380..." />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1" for="email">E-mail</label>
+          <input type="email" name="email" id="email" class="w-full border rounded-xl px-4 py-2" required />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1" for="key">Ключ доступа</label>
+          <input type="text" name="key" id="key" class="w-full border rounded-xl px-4 py-2" required />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1" for="viber">Viber</label>
+          <input type="text" name="viber" id="viber" class="w-full border rounded-xl px-4 py-2" required />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1" for="paydate">Дата оплаты</label>
+          <input type="date" name="paydate" id="paydate" class="w-full border rounded-xl px-4 py-2" required />
+        </div>
+        <button type="submit" class="w-full bg-black text-white py-2 rounded-xl hover:opacity-80 transition mt-2">
+          Сохранить
+        </button>
+      </form>
+    </div>
+  </div>
+
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-app.js";
     import {
@@ -22,7 +65,7 @@
       apiKey: "AIzaSyBfAK1wODl4MTXd2wit5BccSmWd3jvYXI4",
       authDomain: "clienty-1975.firebaseapp.com",
       projectId: "clienty-1975",
-      storageBucket: "clienty-1975.firebasestorage.app",
+      storageBucket: "clienty-1975.appspot.com", // исправлено
       messagingSenderId: "774716625150",
       appId: "1:774716625150:web:0f3d677c047246b42755af",
       measurementId: "G-Y4JVNFJEZD"
@@ -33,58 +76,23 @@
 
     const clientsContainer = document.getElementById("clientsContainer");
     const modal = document.getElementById("modal");
-    const infoModal = document.getElementById("infoModal");
     const form = document.getElementById("clientForm");
-    const clientIndexInput = document.getElementById("clientIndex");
-    const modalTitle = document.getElementById("modalTitle");
-    const clientInfoDiv = document.getElementById("clientInfo");
-    const editBtn = document.getElementById("editBtn");
-    const deleteBtn = document.getElementById("deleteBtn");
 
     let clients = [];
-    let currentClientId = null;
+    let editingId = null;
 
-    function pluralDays(n) {
-      const mod10 = n % 10;
-      const mod100 = n % 100;
-      if (mod10 === 1 && mod100 !== 11) return "день";
-      if ([2, 3, 4].includes(mod10) && ![12, 13, 14].includes(mod100)) return "дня";
-      return "дней";
-    }
-
-    function calculateDaysLeft(paydateStr) {
-      const paydate = new Date(paydateStr);
-      const expireDate = new Date(paydate);
-      expireDate.setDate(expireDate.getDate() + 30);
-      const today = new Date();
-      const diffMs = expireDate - today;
-      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-      return Math.max(0, diffDays);
-    }
-
-    function normalizePhone(phone) {
-      let digits = phone.replace(/\D/g, "");
-      if (!digits.startsWith("380")) {
-        if (digits.startsWith("0")) digits = "38" + digits;
-        else digits = "380" + digits;
-      }
-      return digits;
-    }
-
-    function openModal(client = null) {
+    function openModal(editClient = null) {
       modal.classList.remove("hidden");
-      if (client) {
-        modalTitle.textContent = "Редактировать клиента";
-        form.phone.value = client.phone;
-        form.email.value = client.email;
-        form.key.value = client.key;
-        form.viber.value = client.viber;
-        form.paydate.value = client.paydate;
-        clientIndexInput.value = client.id;
+      if (editClient) {
+        editingId = editClient.id;
+        form.phone.value = editClient.phone;
+        form.email.value = editClient.email;
+        form.key.value = editClient.key;
+        form.viber.value = editClient.viber;
+        form.paydate.value = editClient.paydate;
       } else {
-        modalTitle.textContent = "Новый клиент";
+        editingId = null;
         form.reset();
-        clientIndexInput.value = "";
       }
     }
 
@@ -92,57 +100,26 @@
       modal.classList.add("hidden");
     }
 
-    function openInfoModal() {
-      infoModal.classList.remove("hidden");
+    async function loadClients() {
+      const snapshot = await getDocs(collection(db, "clients"));
+      clients = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      renderClients();
     }
 
-    function closeInfoModal() {
-      infoModal.classList.add("hidden");
-    }
-
-    async function renderClients() {
+    function renderClients() {
       clientsContainer.innerHTML = "";
-      clients.forEach((client) => {
-        const daysLeft = calculateDaysLeft(client.paydate);
+      clients.forEach(client => {
         const btn = document.createElement("button");
-        btn.className = `w-full ${
-          daysLeft === 2 ? "bg-red-500 text-white" : "bg-gray-100 text-red-600"
-        } font-bold py-3 px-4 rounded-xl shadow hover:opacity-90 text-left text-2xl mb-3`;
         btn.textContent = client.phone;
-        btn.onclick = () => {
-          showClientInfo(client);
-        };
+        btn.className = "block w-full text-left p-3 mb-2 bg-gray-100 rounded hover:bg-gray-200";
+        btn.onclick = () => openModal(client);
         clientsContainer.appendChild(btn);
       });
     }
 
-    function showClientInfo(client) {
-      const pd = normalizePhone(client.phone);
-      const daysLeft = calculateDaysLeft(client.paydate);
-      clientInfoDiv.innerHTML = `
-        <div class="flex items-center gap-3">📞 <a href="tel:${pd}" class="text-black no-underline">${client.phone}</a></div>
-        <div class="flex items-center gap-3">📧 <a href="mailto:${client.email}" class="text-black no-underline">${client.email}</a></div>
-        <div class="flex items-center gap-3">🛡️ <span class="text-black">${client.key}</span></div>
-        <div class="flex items-center gap-3">📲 <a href="viber://add?number=${pd}" class="text-black no-underline">${client.viber}</a></div>
-        <div class="flex items-center gap-3">🔗 <a href="https://is.gd/${pd}" target="_blank" class="text-black no-underline">https://is.gd/${pd}</a></div>
-        <div class="flex items-center gap-3">🗓️ <span class="text-black">${new Date(client.paydate).toLocaleDateString()}</span></div>
-        <div class="flex items-center gap-3">⏳ <span class="text-red-600 font-bold text-xl">Тариф заканчивается через: ${daysLeft} ${pluralDays(daysLeft)}</span></div>
-      `;
-      currentClientId = client.id;
-      openInfoModal();
-    }
-
-    async function loadClients() {
-      const snapshot = await getDocs(collection(db, "clients"));
-      clients = snapshot.docs.map((doc) => {
-        return { id: doc.id, ...doc.data() };
-      });
-      renderClients();
-    }
-
-    form.addEventListener("submit", async (e) => {
+    form.addEventListener("submit", async e => {
       e.preventDefault();
-      const clientId = clientIndexInput.value;
+
       const data = {
         phone: form.phone.value.trim(),
         email: form.email.value.trim(),
@@ -151,8 +128,8 @@
         paydate: form.paydate.value,
       };
 
-      if (clientId) {
-        const docRef = doc(db, "clients", clientId);
+      if (editingId) {
+        const docRef = doc(db, "clients", editingId);
         await updateDoc(docRef, data);
       } else {
         await addDoc(collection(db, "clients"), data);
@@ -162,90 +139,11 @@
       closeModal();
     });
 
-    editBtn.onclick = () => {
-      const client = clients.find((c) => c.id === currentClientId);
-      if (client) {
-        closeInfoModal();
-        openModal(client);
-      }
-    };
-
-    deleteBtn.onclick = async () => {
-      if (!currentClientId) return;
-      if (confirm("Удалить этого клиента?")) {
-        await deleteDoc(doc(db, "clients", currentClientId));
-        currentClientId = null;
-        await loadClients();
-        closeInfoModal();
-      }
-    };
-
+    document.getElementById("addClientBtn").onclick = () => openModal();
     document.getElementById("closeModalBtn").onclick = closeModal;
-    document.getElementById("closeInfoModalBtn").onclick = closeInfoModal;
 
-    window.onload = () => {
-      loadClients();
-    };
-
-    window.openModal = openModal;
+    window.onload = loadClients;
   </script>
-</head>
-<body class="bg-white font-sans text-gray-800">
-
-  <div class="fixed top-4 left-1/2 transform -translate-x-1/2 z-40">
-    <button onclick="openModal()" class="bg-black text-white px-6 py-3 rounded-2xl text-lg font-medium hover:opacity-80 transition">
-      Добавить клиента
-    </button>
-  </div>
-
-  <div id="clientsContainer" class="pt-24 px-4 flex flex-col max-w-md mx-auto"></div>
-
-  <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
-    <div class="bg-white rounded-3xl shadow-xl w-full max-w-sm p-6 relative">
-      <button id="closeModalBtn" class="absolute top-3 right-5 text-gray-500 hover:text-gray-700 text-3xl leading-none">&times;</button>
-      <h2 id="modalTitle" class="text-xl font-semibold mb-4">Новый клиент</h2>
-      <form id="clientForm" class="space-y-4">
-        <input type="hidden" id="clientIndex" name="clientIndex" />
-        <div>
-          <label class="block text-sm font-medium mb-1">Телефон</label>
-          <input type="tel" id="phone" name="phone" class="w-full border rounded-xl px-4 py-2" required placeholder="+380..." />
-        </div>
-        <div>
-          <label class="block text-sm font-medium mb-1">E-mail</label>
-          <input type="email" id="email" name="email" class="w-full border rounded-xl px-4 py-2" required />
-        </div>
-        <div>
-          <label class="block text-sm font-medium mb-1">Ключ доступа</label>
-          <input type="text" id="key" name="key" class="w-full border rounded-xl px-4 py-2" required />
-        </div>
-        <div>
-          <label class="block text-sm font-medium mb-1">Viber</label>
-          <input type="text" id="viber" name="viber" class="w-full border rounded-xl px-4 py-2" required />
-        </div>
-        <div>
-          <label class="block text-sm font-medium mb-1">Дата оплаты</label>
-          <input type="date" id="paydate" name="paydate" class="w-full border rounded-xl px-4 py-2" required />
-        </div>
-        <button type="submit" class="w-full bg-black text-white py-2 rounded-xl hover:opacity-80 transition mt-2">
-          Сохранить
-        </button>
-      </form>
-    </div>
-  </div>
-
-  <div id="infoModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
-    <div class="bg-white rounded-3xl shadow-xl w-full max-w-sm p-6 relative">
-      <button id="closeInfoModalBtn" class="absolute top-3 right-5 text-gray-500 hover:text-gray-700 text-3xl leading-none">&times;</button>
-      <h2 class="text-xl font-semibold mb-4">Информация о клиенте</h2>
-      <div id="clientInfo" class="space-y-4 text-gray-700 text-xl mb-4"></div>
-      <button id="editBtn" class="w-full bg-black text-white py-2 rounded-xl hover:opacity-80 transition mb-2">
-        Редактировать
-      </button>
-      <button id="deleteBtn" class="w-full bg-red-600 text-white py-2 rounded-xl hover:bg-red-700 transition">
-        Удалить клиента
-      </button>
-    </div>
-  </div>
 
 </body>
 </html>
