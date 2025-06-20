@@ -2,45 +2,49 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Клиенты IPTV</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Клиенты</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-white font-sans text-gray-800">
+<body class="bg-white text-gray-800 font-sans relative">
 
+  <!-- Кнопка добавления клиента -->
   <div class="fixed top-4 left-1/2 transform -translate-x-1/2 z-40">
-    <button id="addClientBtn" class="bg-black text-white px-6 py-3 rounded-2xl text-lg font-medium hover:opacity-80 transition">
+    <button onclick="openModal()" class="bg-black text-white px-6 py-3 rounded-2xl text-lg font-medium hover:opacity-80 transition">
       Добавить клиента
     </button>
   </div>
 
-  <div id="clientsContainer" class="pt-24 px-4 max-w-md mx-auto"></div>
+  <!-- Контейнер клиентов -->
+  <div id="clientsContainer" class="pt-24 px-4 flex flex-col gap-4 max-w-md mx-auto"></div>
 
-  <!-- Модальное окно -->
-  <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
-    <div class="bg-white rounded-3xl shadow-xl w-full max-w-sm p-6 relative">
-      <button id="closeModalBtn" class="absolute top-3 right-5 text-gray-500 hover:text-gray-700 text-3xl leading-none">&times;</button>
-      <h2 class="text-xl font-semibold mb-4">Добавить / Редактировать клиента</h2>
+  <!-- Модалка формы -->
+  <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-3xl shadow-xl w-full max-w-sm p-6">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-xl font-semibold" id="modalTitle">Новый клиент</h2>
+        <button onclick="closeModal()" class="text-gray-500 hover:text-gray-700 text-2xl leading-none">&times;</button>
+      </div>
       <form id="clientForm" class="space-y-4">
         <div>
           <label class="block text-sm font-medium mb-1" for="phone">Телефон</label>
-          <input type="tel" name="phone" id="phone" class="w-full border rounded-xl px-4 py-2" required placeholder="+380..." />
+          <input type="tel" id="phone" class="w-full border rounded-xl px-4 py-2" required placeholder="+380..." />
         </div>
         <div>
           <label class="block text-sm font-medium mb-1" for="email">E-mail</label>
-          <input type="email" name="email" id="email" class="w-full border rounded-xl px-4 py-2" required />
+          <input type="email" id="email" class="w-full border rounded-xl px-4 py-2" required />
         </div>
         <div>
           <label class="block text-sm font-medium mb-1" for="key">Ключ доступа</label>
-          <input type="text" name="key" id="key" class="w-full border rounded-xl px-4 py-2" required />
+          <input type="text" id="key" class="w-full border rounded-xl px-4 py-2" required />
         </div>
         <div>
           <label class="block text-sm font-medium mb-1" for="viber">Viber</label>
-          <input type="text" name="viber" id="viber" class="w-full border rounded-xl px-4 py-2" required />
+          <input type="text" id="viber" class="w-full border rounded-xl px-4 py-2" required />
         </div>
         <div>
           <label class="block text-sm font-medium mb-1" for="paydate">Дата оплаты</label>
-          <input type="date" name="paydate" id="paydate" class="w-full border rounded-xl px-4 py-2" required />
+          <input type="date" id="paydate" class="w-full border rounded-xl px-4 py-2" required />
         </div>
         <button type="submit" class="w-full bg-black text-white py-2 rounded-xl hover:opacity-80 transition mt-2">
           Сохранить
@@ -49,101 +53,47 @@
     </div>
   </div>
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-app.js";
-    import {
-      getFirestore,
-      collection,
-      addDoc,
-      getDocs,
-      doc,
-      updateDoc,
-      deleteDoc
-    } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js";
-
-    const firebaseConfig = {
-      apiKey: "AIzaSyBfAK1wODl4MTXd2wit5BccSmWd3jvYXI4",
-      authDomain: "clienty-1975.firebaseapp.com",
-      projectId: "clienty-1975",
-      storageBucket: "clienty-1975.appspot.com", // исправлено
-      messagingSenderId: "774716625150",
-      appId: "1:774716625150:web:0f3d677c047246b42755af",
-      measurementId: "G-Y4JVNFJEZD"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-
-    const clientsContainer = document.getElementById("clientsContainer");
-    const modal = document.getElementById("modal");
-    const form = document.getElementById("clientForm");
-
-    let clients = [];
-    let editingId = null;
-
-    function openModal(editClient = null) {
-      modal.classList.remove("hidden");
-      if (editClient) {
-        editingId = editClient.id;
-        form.phone.value = editClient.phone;
-        form.email.value = editClient.email;
-        form.key.value = editClient.key;
-        form.viber.value = editClient.viber;
-        form.paydate.value = editClient.paydate;
-      } else {
-        editingId = null;
-        form.reset();
+  <script>
+    function normalizePhone(phone) {
+      let digits = phone.replace(/\D/g, '');
+      if (!digits.startsWith('380')) {
+        if (digits.startsWith('0')) digits = '38' + digits;
+        else digits = '380' + digits;
       }
+      return digits;
+    }
+
+    document.getElementById('clientForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const phone = normalizePhone(e.target.phone.value.trim());
+      const email = e.target.email.value.trim();
+      const key = e.target.key.value.trim();
+      const viber = e.target.viber.value.trim();
+      const paydate = e.target.paydate.value;
+      const clientData = { phone, email, key, viber, paydate };
+
+      try {
+        const res = await fetch('https://clienty-backend.onrender.com/api/clients', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(clientData)
+        });
+        if (!res.ok) throw new Error('Ошибка при сохранении клиента');
+        closeModal();
+        alert('Клиент успешно сохранён!');
+      } catch (err) {
+        alert('Ошибка: ' + err.message);
+      }
+    });
+
+    function openModal() {
+      document.getElementById('modal').classList.replace('hidden', 'flex');
+      document.getElementById('clientForm').reset();
     }
 
     function closeModal() {
-      modal.classList.add("hidden");
+      document.getElementById('modal').classList.replace('flex', 'hidden');
     }
-
-    async function loadClients() {
-      const snapshot = await getDocs(collection(db, "clients"));
-      clients = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      renderClients();
-    }
-
-    function renderClients() {
-      clientsContainer.innerHTML = "";
-      clients.forEach(client => {
-        const btn = document.createElement("button");
-        btn.textContent = client.phone;
-        btn.className = "block w-full text-left p-3 mb-2 bg-gray-100 rounded hover:bg-gray-200";
-        btn.onclick = () => openModal(client);
-        clientsContainer.appendChild(btn);
-      });
-    }
-
-    form.addEventListener("submit", async e => {
-      e.preventDefault();
-
-      const data = {
-        phone: form.phone.value.trim(),
-        email: form.email.value.trim(),
-        key: form.key.value.trim(),
-        viber: form.viber.value.trim(),
-        paydate: form.paydate.value,
-      };
-
-      if (editingId) {
-        const docRef = doc(db, "clients", editingId);
-        await updateDoc(docRef, data);
-      } else {
-        await addDoc(collection(db, "clients"), data);
-      }
-
-      await loadClients();
-      closeModal();
-    });
-
-    document.getElementById("addClientBtn").onclick = () => openModal();
-    document.getElementById("closeModalBtn").onclick = closeModal;
-
-    window.onload = loadClients;
   </script>
-
 </body>
 </html>
